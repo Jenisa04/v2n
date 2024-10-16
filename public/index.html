@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audio Recorder</title>
+  </head>
+  <body>
+    <h1>Audio Recorder</h1>
+
+    <button id="recordButton">Start Recording</button>
+    <button id="stopButton" disabled>Stop Recording</button>
+    <p id="status"></p>
+
+    <h3>Transcription:</h3>
+    <p id="transcription"></p>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+
+      // Get button elements
+      const recordButton = document.getElementById('recordButton');
+      const stopButton = document.getElementById('stopButton');
+      const statusElement = document.getElementById('status');
+      const transcriptionElement = document.getElementById('transcription'); // Element to display transcription
+
+      // Set up event listeners
+      recordButton.addEventListener('click', startRecording);
+      stopButton.addEventListener('click', stopRecording);
+
+      async function startRecording() {
+        statusElement.textContent = 'Recording...';
+        recordButton.disabled = true;
+        stopButton.disabled = false;
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.start();
+      }
+
+      function stopRecording() {
+        statusElement.textContent = 'Recording stopped.';
+        stopButton.disabled = true;
+
+        mediaRecorder.stop();
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' }); // Ensure it's the right MIME type
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'recorded_audio.mp3'); // Use 'webm' if that's the format
+
+          try {
+            const response = await fetch('/record', {
+              method: 'POST',
+              body: formData,
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+              console.log(`Uploaded file: ${data.path}`);
+              // Update the transcription on the page
+              transcriptionElement.textContent = data.transcription;
+            } else {
+              console.error('Error uploading audio.');
+              transcriptionElement.textContent =
+                'Error processing transcription.';
+            }
+          } catch (error) {
+            console.error('Error uploading audio:', error);
+            transcriptionElement.textContent =
+              'Error processing transcription.';
+          }
+
+          audioChunks = [];
+        };
+      }
+    </script>
+  </body>
+</html>
