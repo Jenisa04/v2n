@@ -3,29 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Audio Recorder</title>
+    <title>Audio Recorder and Uploader</title>
   </head>
   <body>
-    <h1>Audio Recorder</h1>
+    <h1>Audio Recorder and Uploader</h1>
 
+    <!-- Audio Recording Section -->
     <button id="recordButton">Start Recording</button>
     <button id="stopButton" disabled>Stop Recording</button>
     <p id="status"></p>
 
-    <h3>Transcription:</h3>
-    <p id="transcription"></p>
+    <!-- File Upload Section -->
+    <h2>Upload Audio File for Transcription</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" id="audioFile" accept="audio/*" />
+      <button type="submit">Upload File</button>
+    </form>
+
+    <p id="uploadStatus"></p>
+    <p id="transcriptionResult"></p>
 
     <script>
       let mediaRecorder;
       let audioChunks = [];
 
-      // Get button elements
       const recordButton = document.getElementById('recordButton');
       const stopButton = document.getElementById('stopButton');
       const statusElement = document.getElementById('status');
-      const transcriptionElement = document.getElementById('transcription'); // Element to display transcription
+      const uploadForm = document.getElementById('uploadForm');
+      const uploadStatus = document.getElementById('uploadStatus');
+      const transcriptionResult = document.getElementById(
+        'transcriptionResult'
+      );
 
-      // Set up event listeners
+      // Audio Recording Logic
       recordButton.addEventListener('click', startRecording);
       stopButton.addEventListener('click', stopRecording);
 
@@ -53,9 +64,9 @@
         mediaRecorder.stop();
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' }); // Ensure it's the right MIME type
+          const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
           const formData = new FormData();
-          formData.append('audio', audioBlob, 'recorded_audio.mp3'); // Use 'webm' if that's the format
+          formData.append('audio', audioBlob, 'recorded_audio.mp3');
 
           try {
             const response = await fetch('/record', {
@@ -66,22 +77,48 @@
             const data = await response.json();
             if (response.ok) {
               console.log(`Uploaded file: ${data.path}`);
-              // Update the transcription on the page
-              transcriptionElement.textContent = data.transcription;
+              transcriptionResult.textContent = `Transcription: ${data.transcription}`;
             } else {
               console.error('Error uploading audio.');
-              transcriptionElement.textContent =
-                'Error processing transcription.';
             }
           } catch (error) {
             console.error('Error uploading audio:', error);
-            transcriptionElement.textContent =
-              'Error processing transcription.';
           }
 
           audioChunks = [];
         };
       }
+
+      // File Upload Logic
+      uploadForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const audioFile = document.getElementById('audioFile').files[0];
+        if (!audioFile) {
+          uploadStatus.textContent = 'Please select an audio file!';
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('audio', audioFile);
+
+        try {
+          const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            uploadStatus.textContent = 'File uploaded successfully!';
+            transcriptionResult.textContent = `Transcription: ${data.transcription}`;
+          } else {
+            uploadStatus.textContent = 'Error uploading file.';
+          }
+        } catch (error) {
+          uploadStatus.textContent = 'Error uploading file.';
+          console.error('Error:', error);
+        }
+      });
     </script>
   </body>
 </html>
