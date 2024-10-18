@@ -3,122 +3,180 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Audio Recorder and Uploader</title>
-  </head>
-  <body>
-    <h1>Audio Recorder and Uploader</h1>
+    <title>Audio to Text</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        color: #333;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
 
-    <!-- Audio Recording Section -->
-    <button id="recordButton">Start Recording</button>
-    <button id="stopButton" disabled>Stop Recording</button>
-    <p id="status"></p>
+      .container {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 500px;
+        text-align: center;
+      }
 
-    <!-- File Upload Section -->
-    <h2>Upload Audio File for Transcription</h2>
-    <form id="uploadForm" enctype="multipart/form-data">
-      <input type="file" id="audioFile" accept="audio/*" />
-      <button type="submit">Upload File</button>
-    </form>
+      h1 {
+        color: #4caf50;
+        margin-bottom: 20px;
+      }
 
-    <p id="uploadStatus"></p>
-    <p id="transcriptionResult"></p>
+      button {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 10px;
+      }
 
+      button:hover {
+        background-color: #45a049;
+      }
+
+      input[type='file'] {
+        margin: 20px 0;
+      }
+
+      #message {
+        margin-top: 20px;
+        font-weight: bold;
+      }
+
+      #transcription {
+        margin-top: 10px;
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        text-align: left;
+      }
+
+      footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #aaa;
+      }
+    </style>
     <script>
       let mediaRecorder;
       let audioChunks = [];
 
-      const recordButton = document.getElementById('recordButton');
-      const stopButton = document.getElementById('stopButton');
-      const statusElement = document.getElementById('status');
-      const uploadForm = document.getElementById('uploadForm');
-      const uploadStatus = document.getElementById('uploadStatus');
-      const transcriptionResult = document.getElementById(
-        'transcriptionResult'
-      );
+      function startRecording() {
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
 
-      // Audio Recording Logic
-      recordButton.addEventListener('click', startRecording);
-      stopButton.addEventListener('click', stopRecording);
+            mediaRecorder.ondataavailable = (event) => {
+              audioChunks.push(event.data);
+            };
 
-      async function startRecording() {
-        statusElement.textContent = 'Recording...';
-        recordButton.disabled = true;
-        stopButton.disabled = false;
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        mediaRecorder = new MediaRecorder(stream);
-
-        mediaRecorder.ondataavailable = (event) => {
-          audioChunks.push(event.data);
-        };
-
-        mediaRecorder.start();
+            mediaRecorder.onstop = () => {
+              const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+              audioChunks = [];
+              uploadAudio(audioBlob);
+            };
+          })
+          .catch((error) => {
+            console.error('Error accessing microphone:', error);
+          });
       }
 
       function stopRecording() {
-        statusElement.textContent = 'Recording stopped.';
-        stopButton.disabled = true;
-
         mediaRecorder.stop();
-
-        mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
-          const formData = new FormData();
-          formData.append('audio', audioBlob, 'recorded_audio.mp3');
-
-          try {
-            const response = await fetch('/record', {
-              method: 'POST',
-              body: formData,
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-              console.log(`Uploaded file: ${data.path}`);
-              transcriptionResult.textContent = `Transcription: ${data.transcription}`;
-            } else {
-              console.error('Error uploading audio.');
-            }
-          } catch (error) {
-            console.error('Error uploading audio:', error);
-          }
-
-          audioChunks = [];
-        };
       }
 
-      // File Upload Logic
-      uploadForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const audioFile = document.getElementById('audioFile').files[0];
-        if (!audioFile) {
-          uploadStatus.textContent = 'Please select an audio file!';
-          return;
-        }
-
+      function uploadAudio(audioBlob) {
         const formData = new FormData();
-        formData.append('audio', audioFile);
+        formData.append('audio', audioBlob, 'recording.wav');
 
-        try {
-          const response = await fetch('/upload', {
-            method: 'POST',
-            body: formData,
+        fetch('/upload', {
+          method: 'POST',
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById('message').textContent = data.message;
+            pollForTranscription(data.fileId);
+          })
+          .catch((error) => {
+            console.error('Error uploading file:', error);
           });
+      }
 
-          const data = await response.json();
-          if (response.ok) {
-            uploadStatus.textContent = 'File uploaded successfully!';
-            transcriptionResult.textContent = `Transcription: ${data.transcription}`;
-          } else {
-            uploadStatus.textContent = 'Error uploading file.';
-          }
-        } catch (error) {
-          uploadStatus.textContent = 'Error uploading file.';
-          console.error('Error:', error);
-        }
-      });
+      function pollForTranscription(fileId) {
+        const interval = setInterval(() => {
+          fetch(`/transcription/${fileId}`)
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.transcription) {
+                document.getElementById('transcription').textContent =
+                  data.transcription;
+                clearInterval(interval);
+              } else {
+                document.getElementById('transcription').textContent =
+                  'Transcription in progress...';
+              }
+            })
+            .catch((error) => {
+              console.error('Error fetching transcription:', error);
+            });
+        }, 3000);
+      }
+
+      function uploadFile() {
+        const fileInput = document.getElementById('audioFile');
+        const formData = new FormData();
+        formData.append('audio', fileInput.files[0]);
+
+        fetch('/upload', {
+          method: 'POST',
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById('message').textContent = data.message;
+            pollForTranscription(data.fileId);
+          })
+          .catch((error) => {
+            console.error('Error uploading file:', error);
+          });
+      }
     </script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Audio Upload and Recorder</h1>
+
+      <h2>Record Audio</h2>
+      <button onclick="startRecording()">Start Recording</button>
+      <button onclick="stopRecording()">Stop Recording</button>
+
+      <h2>Upload Audio File</h2>
+      <input type="file" id="audioFile" accept="audio/*" />
+      <button onclick="uploadFile()">Upload</button>
+
+      <p id="message"></p>
+      <div id="transcription"></div>
+
+      <footer>
+        <p>&copy; 2024 Your Company. All rights reserved.</p>
+      </footer>
+    </div>
   </body>
 </html>

@@ -6,6 +6,9 @@ const { spawn } = require('child_process');
 
 const app = express();
 
+// In-memory storage for transcriptions (for simplicity)
+let transcriptions = {};
+
 // Configure multer for file upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -22,48 +25,48 @@ const upload = multer({ storage: storage });
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Route to handle recording and transcription
-app.post('/record', upload.single('audio'), (req, res) => {
-  const audioFilePath = req.file.path;
-  console.log(`Audio file saved: ${audioFilePath}`);
-
-  const pythonProcess = spawn('python', ['transcribe.py', audioFilePath]);
-
-  pythonProcess.stdout.on('data', (data) => {
-    const transcription = data.toString();
-    console.log(`Transcription: ${transcription}`);
-    res.json({
-      message: 'Audio recorded successfully!',
-      path: audioFilePath,
-      transcription,
-    });
-  });
-
-  // pythonProcess.on('close', () => {
-  //   fs.unlinkSync(audioFilePath); // Optionally delete the file after transcription
-  // });
-});
-
-// Route to handle file upload and transcription
+// Route to handle file upload
 app.post('/upload', upload.single('audio'), (req, res) => {
   const audioFilePath = req.file.path;
+  const fileId = path.basename(audioFilePath); // Use file name as a unique ID
   console.log(`Audio file uploaded: ${audioFilePath}`);
 
-  const pythonProcess = spawn('python', ['transcribe.py', audioFilePath]);
+  // Send immediate response to indicate the file was uploaded successfully
+  res.json({
+    message: 'File uploaded successfully!',
+    fileId: fileId, // Return a file ID to poll for transcription later
+  });
+
+  // After responding, handle the transcription process in the background
+  const pythonProcess = spawn('python', ['transcribe_small.py', audioFilePath]);
 
   pythonProcess.stdout.on('data', (data) => {
     const transcription = data.toString();
     console.log(`Transcription: ${transcription}`);
-    res.json({
-      message: 'File uploaded successfully!',
-      path: audioFilePath,
-      transcription,
-    });
+
+    // Store the transcription in-memory using the file ID
+    transcriptions[fileId] = transcription;
   });
 
-  // pythonProcess.on('close', () => {
-  //   fs.unlinkSync(audioFilePath); // Optionally delete the file after transcription
-  // });
+  pythonProcess.on('close', () => {
+    fs.unlinkSync(audioFilePath); // Optionally delete the file after transcription
+  });
+});
+
+// Route to poll for transcription result
+app.get('/transcription/:fileId', (req, res) => {
+  const fileId = req.params.fileId;
+
+  // Check if the transcription is ready
+  if (transcriptions[fileId]) {
+    res.json({
+      transcription: transcriptions[fileId],
+    });
+  } else {
+    res.json({
+      transcription: null, // Transcription is not yet ready
+    });
+  }
 });
 
 // Start the server

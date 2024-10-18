@@ -1,56 +1,63 @@
 import torch
 import sys
 import os
+import time
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import warnings
 
 # Suppress FutureWarnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-def suppress_stdout_stderr():
-    """Suppress stdout and stderr"""
-    sys.stdout = open(os.devnull, 'w')
-    sys.stderr = open(os.devnull, 'w')
-
-def restore_stdout_stderr():
-    """Restore stdout and stderr"""
-    sys.stdout = sys.__stdout__
-    sys.stderr = sys.__stderr__
-
 def transcribe_audio(audio_file_path):
-    # Suppress the specific message during the loading of the model
-    suppress_stdout_stderr()
-    try:
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    """
+    Transcribes an audio file using Hugging Face's Whisper small model.
+    """
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-        model_id = "openai/whisper-large-v3-turbo"
+    model_id = "openai/whisper-small"  # Use the smaller Whisper model
 
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
-        )
-        model.generation_config.language = "en"  # define your language of choice here
-        model.to(device)
+    # Load model and processor
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id, 
+        torch_dtype=torch_dtype, 
+        low_cpu_mem_usage=True
+    )
 
-        processor = AutoProcessor.from_pretrained(model_id)
+    model.generation_config.language = "en"  # define your language of choice here
+    model.to(device)
+    processor = AutoProcessor.from_pretrained(model_id)
 
-        pipe = pipeline(
-            "automatic-speech-recognition",
-            model=model,
-            tokenizer=processor.tokenizer,
-            feature_extractor=processor.feature_extractor,
-            torch_dtype=torch_dtype,
-            device=device,
-        )
-    finally:
-        # Restore stdout and stderr
-        restore_stdout_stderr()
+    # Set up the pipeline for ASR (Automatic Speech Recognition)
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        torch_dtype=torch_dtype,
+        device=device
+    )
 
-    # Process the audio file
+    # Transcribe audio file
     result = pipe(audio_file_path)
-    return result
+    
+    return result["text"]
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python transcribe.py <path_to_audio_file>")
+        sys.exit(1)
+
     audio_file_path = sys.argv[1]
-    res = transcribe_audio(audio_file_path)
-    print(res["text"])
+
+    if not os.path.exists(audio_file_path):
+        print(f"Error: Audio file '{audio_file_path}' does not exist.")
+        sys.exit(1)
+    start_time = time.time()
+    transcription = transcribe_audio(audio_file_path)
+    end_time = time.time()
+    duration = end_time - start_time
+    
+    print(f"{transcription}")
+    print(f"\nTime taken: {duration:.2f} seconds")
+    
