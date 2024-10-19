@@ -6,8 +6,8 @@ const { spawn } = require('child_process');
 
 const app = express();
 
-// In-memory storage for transcriptions (for simplicity)
-let transcriptions = {};
+// In-memory storage for transcriptions and summaries
+let results = {};
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
@@ -34,37 +34,55 @@ app.post('/upload', upload.single('audio'), (req, res) => {
   // Send immediate response to indicate the file was uploaded successfully
   res.json({
     message: 'File uploaded successfully!',
-    fileId: fileId, // Return a file ID to poll for transcription later
+    fileId: fileId, // Return a file ID to poll for transcription and summary later
   });
 
-  // After responding, handle the transcription process in the background
-  const pythonProcess = spawn('python', ['transcribe_small.py', audioFilePath]);
+  // After responding, handle the transcription and summary process in the background
+  const pythonProcess = spawn('python', [
+    'transcribe.py', // Change this to your Python script name
+    audioFilePath,
+  ]);
+
+  let pythonOutput = '';
 
   pythonProcess.stdout.on('data', (data) => {
-    const transcription = data.toString();
-    console.log(`Transcription: ${transcription}`);
-
-    // Store the transcription in-memory using the file ID
-    transcriptions[fileId] = transcription;
+    pythonOutput += data.toString();
   });
 
   pythonProcess.on('close', () => {
-    fs.unlinkSync(audioFilePath); // Optionally delete the file after transcription
+    try {
+      const result = JSON.parse(pythonOutput); // Parse the Python output
+      console.log(`Transcription: ${result.transcription}`);
+      console.log(`Summary: ${result.summary}`);
+
+      // Store both the transcription and summary in-memory using the file ID
+      results[fileId] = {
+        transcription: result.transcription,
+        summary: result.summary,
+      };
+
+      // Optionally delete the file after processing
+      fs.unlinkSync(audioFilePath);
+    } catch (error) {
+      console.error('Error parsing Python output:', error);
+    }
   });
 });
 
-// Route to poll for transcription result
+// Route to poll for transcription and summary result
 app.get('/transcription/:fileId', (req, res) => {
   const fileId = req.params.fileId;
 
-  // Check if the transcription is ready
-  if (transcriptions[fileId]) {
+  // Check if both the transcription and summary are ready
+  if (results[fileId]) {
     res.json({
-      transcription: transcriptions[fileId],
+      transcription: results[fileId].transcription,
+      summary: results[fileId].summary,
     });
   } else {
     res.json({
       transcription: null, // Transcription is not yet ready
+      summary: null, // Summary is not yet ready
     });
   }
 });

@@ -13,8 +13,8 @@
         padding: 0;
         display: flex;
         justify-content: center;
-        align-items: center;
-        height: 100vh;
+        align-items: center; /* Change to flex-start to allow scrolling */
+        min-height: 100vh; /* Ensure it takes at least the full height of the viewport */
       }
 
       .container {
@@ -25,6 +25,8 @@
         width: 100%;
         max-width: 500px;
         text-align: center;
+        overflow-y: auto; /* Allow the container to scroll if content exceeds the height */
+        max-height: 90vh; /* Set a maximum height for the container */
       }
 
       h1 {
@@ -56,13 +58,20 @@
         font-weight: bold;
       }
 
-      #transcription {
+      #transcription,
+      #summary {
         margin-top: 10px;
         background-color: #f9f9f9;
         padding: 15px;
         border-radius: 8px;
         font-size: 14px;
         text-align: left;
+        max-height: 200px; /* Limit the height of these sections */
+        overflow-y: auto; /* Allow scrolling in these sections if content is too long */
+      }
+
+      #summary {
+        margin-top: 30px;
       }
 
       footer {
@@ -127,10 +136,15 @@
               if (data.transcription) {
                 document.getElementById('transcription').textContent =
                   data.transcription;
+                if (data.summary) {
+                  document.getElementById('summary').textContent = data.summary;
+                }
                 clearInterval(interval);
               } else {
                 document.getElementById('transcription').textContent =
                   'Transcription in progress...';
+                document.getElementById('summary').textContent =
+                  'Summary in progress...';
               }
             })
             .catch((error) => {
@@ -172,11 +186,18 @@
       <button onclick="uploadFile()">Upload</button>
 
       <p id="message"></p>
-      <div id="transcription"></div>
 
-      <footer>
-        <p>&copy; 2024 Your Company. All rights reserved.</p>
-      </footer>
+      <div id="transcription">
+        <h2>Transcription</h2>
+        <p id="transcription-text">
+          Transcription will appear here once generated.
+        </p>
+      </div>
+
+      <div id="summary">
+        <h2>Summary</h2>
+        <p id="summary-text">The summary will appear here once generated.</p>
+      </div>
     </div>
   </body>
 </html>
