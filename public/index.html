@@ -158,7 +158,7 @@
         const formData = new FormData();
         formData.append('audio', fileInput.files[0]);
 
-        fetch('/upload', {
+        fetch('api/upload', {
           method: 'POST',
           body: formData,
         })
